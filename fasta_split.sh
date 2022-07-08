@@ -4,8 +4,8 @@ helpFunction()
 {
    echo ""
    echo "Usage: $0 -i parameterI -n parameterN -d parameterD"
-   echo -e "\t-i The path to the large multi-entry fasta file."
-   echo -e "\t-n The filename for the output one-entry-per-line file."
+   echo -e "\t-i Input file. The path to the large multi-entry fasta file."
+   echo -e "\t-n Collapsed input file. The filename for the one-entry-per-line fasta file created from the input file."
    echo -e "\t-d The directory to store the individual chromosome fasta files."
    exit 1 # Exit script after printing help
 }
@@ -28,25 +28,30 @@ then
 fi
 
 # Begin script in case all parameters are correct
-echo "$parameterI"
-echo "$parameterN"
-echo "$parameterD"
+echo "Input multi-fasta file: $parameterI"
+echo "Collapsed fasta file: $parameterN"
+echo "Directory for individual fasta files: $parameterD"
 echo
 
-awk '/^>/ {printf("\n%s\n",$0);next;} {printf("%s",$0);}  END {printf("\n");}' ${parameterI} > ${parameterN}
+echo "Collapsing multi-fasta file..."
+awk '/^>/ { print (NR==1 ? "" : RS) $1; next } { printf "%s", $0 } END { printf RS }' ${parameterI} > ${parameterN}
 
-mkdir ${parameterD}
+echo "Making directory ${parameterD}..."
+mkdir -p ${parameterD}
 
-while read line
-do
-  if [[ ${line:0:1} == '>' ]]
-  then
-    outfile=${line#>}.fa
-    echo $line > ${parameterD}/${outfile}
-  else
-    echo $line >> ${parameterD}/${outfile}
-  fi
-done < ${parameterN}
+cd ${parameterD}
+echo "Extracting individual chromosome sequences..."
+cat ../../${parameterN} | \
+awk '{
+  if (substr($0, 1, 1)==">") {filename=(substr($0,2) ".fa")}
+  print $0 >> filename
+  close(filename)
+}'
+cd ../..
 
 rm ${parameterN}
+
+echo "Compressing individual fasta files..."
 gzip ${parameterD}/*.fa
+
+echo "Done!"

@@ -1,24 +1,31 @@
 #!/bin/bash
-gunzip -c chm13.draft_v1.1.gene_annotation.v4.gff3.gz > chm13_v1.1.gene_annotation.gff3
+# echo "Decompressing gff file..."
+# gunzip -c CHM13.v2.0.gff3.gz > chm13v2.gff3
 
-gffread chm13_v1.1.gene_annotation.gff3 -T -o chm13_v1.1.gene_annotation.gtf -F
+echo "Creating gtf file for easier feature extraction..."
+gffread <(gzcat chm13v2.gff3) -T -o chm13v2.gtf -F
 
-grep 'LOFF_' chm13_v1.1.gene_annotation.gtf | \
+echo "Creating necessary temporary files..."
+grep 'LOFF_' chm13v2.gtf | \
 awk '{OFS="\t"}{print $10,$12,$22,$14,$16,$18}' > loff_tmp.txt
 
-grep 'CHM13_' chm13_v1.1.gene_annotation.gtf | \
+grep 'CHM13_' chm13v2.gtf | \
 awk '{OFS="\t"}{print $10,$12,$14,$16,$18,$22}' > chm13_tmp.txt
 
+echo "Creating list of matched feature IDs..."
 cat loff_tmp.txt chm13_tmp.txt | \
 grep 'ENST' | \
 sed 's/\"//g' | \
-sed 's/\;//g' > chm13_v1.1.transcript_ids.txt
+sed 's/\;//g' > chm13v2_transcript_ids.txt
 
-gunzip -c ../fasta/chm13.draft_v1.1.fasta.gz > ../fasta/chm13.draft_v1.1.fasta
+# echo "Decompressing genome fasta file..."
+# gunzip -c ../fasta/chm13v2.0.fa.gz > ../fasta/chm13v2.fa
 
-gffread -w ../fasta/chm13_v1.1.transcripts.fa -g ../fasta/chm13.draft_v1.1.fasta chm13_v1.1.gene_annotation.gtf
+echo "Extracting genome transcripts..."
+gffread -w ../fasta/chm13v2_transcripts.fa -g <(gzcat ../fasta/chm13v2.0.fa.gz) chm13v2.gtf
 
-zcat < chm13.draft_v1.1.gene_annotation.v4.gff3.gz | \
+echo "Extracting gene coordinates..."
+zcat < CHM13.v2.0.gff3.gz | \
 grep 'source_gene_common_name' | \
 awk '$3 == "gene" {print $1,$4,$5,$7,$9}' | \
 # sed -e 's/.*source_gene_common_name=\(.*\);gene_id=.*/\1/' | \
@@ -29,26 +36,25 @@ sed -e s/source_gene=//g | \
 sed -e s/gene_biotype=//g | \
 sed -e s/gene_name=//g | \
 awk '{OFS="\t"}{if ($6 == "rRNA"){print $1,$2,$3,$4,$5,"None",$6} if ($6 != "rRNA") {print $1,$2,$3,$4,$5,$6,$7 }}' \
-> chm13_v1.1.genes_gff_coordinates.txt
+> chm13v2_genes_gff_coordinates.txt
 
-awk '{print $7}' chm13_v1.1.genes_gff_coordinates.txt | sort -u > chm13_v1.1.biotype_categories.txt
+echo "Creating list of biotype categories..."
+awk '{print $7}' chm13v2_genes_gff_coordinates.txt | sort -u > chm13_v2_biotype_categories.txt
 
-gzip chm13_v1.1.gene_annotation.gtf #> chm13_v1.1.gene_annotation.gtf.gz
-gzip ../fasta/chm13_v1.1.transcripts.fa #> chm13_v1.1.transcripts.fa.gz
+if [ -x "$(command -v kallisto)" ]
+then
+  echo "Creating kallisto index..."
+  kallisto index -i chm13v2_transcriptome.idx ../fasta/chm13v2_transcripts.fa
+else
+  echo "Skipping kallisto index..."
+fi
 
-rm chm13_v1.1.gene_annotation.gff3
-#rm ../fasta/chm13.draft_v1.1.fasta
+echo "Compressing large files..."
+# gzip chm13v2.gtf
+gzip ../fasta/chm13v2_transcripts.fa
+
+# rm chm13v2.gff3
 rm loff_tmp.txt
 rm chm13_tmp.txt
 
-if ! [ -x "$(command -v kallisto)" ]
-then
-  mkindex = true
-else
-  mkindex = false
-fi
-if [ "$mkindex" == true ]
-then
-  kallisto index -i chm13_v1.1_transcriptome.idx ../fasta/chm13_v1.1.transcripts.fa
-#  rm ../fasta/chm13_v1.1.transcripts.fa
-fi
+echo "Done!"
